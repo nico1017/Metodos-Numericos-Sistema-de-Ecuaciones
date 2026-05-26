@@ -1,3 +1,4 @@
+# Actualización de librerías para la UMSA
 import streamlit as st
 import numpy as np
 import pandas as pd
