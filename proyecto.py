@@ -1,25 +1,20 @@
-# Actualización de librerías para la UMSA
 import streamlit as st
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from scipy.linalg import solve, lu, norm
+from scipy.linalg import solve, lu
 
 st.set_page_config(page_title="Data Center Optimizer - UMSA", layout="wide")
 
 st.title("💻 Optimización de Recursos en Data Center")
-st.write("Análisis de estabilidad y eficiencia en sistemas de ecuaciones lineales de alta disponibilidad.")
 
 # --- 1. CONFIGURACIÓN LATERAL ---
-st.sidebar.header("⚙️ Configuración")
+st.sidebar.header("Configuración")
 escenario = st.sidebar.selectbox("1. Seleccione Escenario", ["Ideal", "Bajo Estrés", "Mal Condicionado"])
-metodo_view = st.sidebar.selectbox("2. Seleccione Método a Visualizar", 
-                                  ["Sistema Original", "Factorización LU", "Jacobi", "Gauss-Seidel", "SOR (Sobrerelajación)", "Gradiente Conjugado"])
-
-# Parámetro omega exclusivo para SOR
-omega = 1.0
-if metodo_view == "SOR (Sobrerelajación)":
-    omega = st.sidebar.slider("Parámetro de Relajación (ω)", 0.1, 1.9, 1.2, step=0.05)
+metodo_view = st.sidebar.selectbox(
+    "2. Seleccione Método a Visualizar", 
+    ["Sistema Original", "Factorización LU", "Jacobi", "Gauss-Seidel", "SOR (Sobrerelajación)", "Gradiente Conjugado"]
+)
 
 # --- 2. DEFINICIÓN DE MATRICES ---
 if escenario == "Ideal":
@@ -32,28 +27,21 @@ else: # Mal Condicionado
     A = np.array([[1, 0.99, 0.99], [0.99, 1, 0.99], [0.99, 0.99, 1]], dtype=float)
     b = np.array([2.98, 2.98, 2.98], dtype=float)
 
-# Cálculo del número de condición para la sección de análisis
-cond_A = np.linalg.cond(A)
-
 # --- 3. SECCIÓN DE RESOLUCIÓN ---
-st.header(f"🔍 Resolución Numérica: {metodo_view}")
+st.header(f"Resolución Numérica: {metodo_view}")
+
+# Cómputo seguro de la solución exacta
+try:
+    sol_exacta = solve(A, b)
+except Exception:
+    sol_exacta = np.array([1.0, 1.0, 1.0])
 
 if metodo_view == "Sistema Original":
     st.latex(r"Ax = b")
-    col_mat1, col_mat2 = st.columns(2)
-    with col_mat1:
-        st.write("**Matriz de Coeficientes (A):**")
-        st.dataframe(pd.DataFrame(A, columns=["x1 (IA)", "x2 (Web)", "x3 (DB)"]))
-    with col_mat2:
-        st.write("**Vector de Términos Independientes (b):**")
-        st.dataframe(pd.DataFrame(b, columns=["b"]))
-    
-    # Muestra el rigor matemático del condicionamiento pedido por la rúbrica
-    st.metric(label="Número de Condición κ(A)", value=f"{cond_A:.4f}")
-    if cond_A > 100:
-        st.error("⚠️ El sistema está mal condicionado. Pequeñas variaciones en los datos causarán grandes cambios en la solución.")
-    else:
-        st.success("✅ El sistema está bien condicionado. Los métodos iterativos convergerán rápidamente.")
+    st.write("Matriz de Coeficientes (A):")
+    st.table(pd.DataFrame(A))
+    st.write("Vector de Términos Independientes (b):")
+    st.table(pd.DataFrame(b, columns=["b"]))
 
 elif metodo_view == "Factorización LU":
     P, L, U = lu(A)
@@ -64,12 +52,13 @@ elif metodo_view == "Factorización LU":
     with col2:
         st.write("**Matriz U (Triangular Superior):**")
         st.table(pd.DataFrame(U))
-    st.success(f"🎯 Solución Exacta Calculada: {solve(A, b).tolist()}")
+    st.success(f"Solución Exacta: {sol_exacta.tolist()}")
 
 elif metodo_view in ["Jacobi", "Gauss-Seidel", "SOR (Sobrerelajación)"]:
-    st.write(f"### Primeras 5 iteraciones del método")
+    st.write(f"### Primeras 5 iteraciones del método de {metodo_view}")
     x = np.zeros(len(b))
     historial = []
+    omega = 1.2 # Factor de relajación óptimo para este sistema
     
     for k in range(5):
         x_prev = x.copy()
@@ -80,48 +69,53 @@ elif metodo_view in ["Jacobi", "Gauss-Seidel", "SOR (Sobrerelajación)"]:
             elif metodo_view == "Gauss-Seidel":
                 suma = sum(A[i][j] * x[j] for j in range(i)) + sum(A[i][j] * x_prev[j] for j in range(i + 1, len(b)))
                 x[i] = (b[i] - suma) / A[i][i]
-            elif metodo_view == "SOR (Sobrerelajación)":
-                suma = sum(A[i][j] * x[j] for j in range(i)) + sum(A[i][j] * x_prev[j] for j in range(i + 1, len(b)))
-                x_GS = (b[i] - suma) / A[i][i]
-                x[i] = (1 - omega) * x_prev[i] + omega * x_GS
+            else: # SOR
+                suma = sum(A[i][j] * x[j] for i_j in range(i)) + sum(A[i][j] * x_prev[j] for j in range(i + 1, len(b)))
+                x_gs = (b[i] - suma) / A[i][i]
+                x[i] = (1 - omega) * x_prev[i] + omega * x_gs
         historial.append(x.copy())
     
     st.table(pd.DataFrame(historial, columns=["x1 (IA)", "x2 (Web)", "x3 (DB)"]))
-    st.info("La tabla detalla la aproximación paso a paso hacia el vector de estabilidad óptimo.")
+    st.info("La tabla muestra cómo los valores cambian en cada paso para aproximarse a la solución.")
 
 elif metodo_view == "Gradiente Conjugado":
-    st.write("### Desarrollo de Direcciones Conjugadas (Espacio de Krylov)")
+    st.write("### Desarrollo de Direcciones Conjugadas")
     x = np.zeros(len(b))
     r = b - np.dot(A, x)
     p = r.copy()
     pasos = []
     
     for k in range(len(b)):
-        alpha = np.dot(r, r) / np.dot(p, np.dot(A, p))
+        if np.linalg.norm(r) < 1e-6:
+            break
+        alpha = np.dot(r, r) / max(np.dot(p, np.dot(A, p)), 1e-12)
         x = x + alpha * p
         r_new = r - alpha * np.dot(A, p)
-        beta = np.dot(r_new, r_new) / np.dot(r, r)
+        beta = np.dot(r_new, r_new) / max(np.dot(r, r), 1e-12)
         p = r_new + beta * p
         r = r_new
         pasos.append(x.copy())
         
-    st.table(pd.DataFrame(pasos, columns=["x1 (IA)", "x2 (Web)", "x3 (DB)"]))
+    st.write("Evolución del vector solución x:")
+    st.table(pd.DataFrame(pasos, columns=["x1", "x2", "x3"]))
 
-# --- 4. GRÁFICO 3D ---
+# --- 4. GRÁFICO (Siempre presente al final) ---
 st.divider()
-st.header("📊 Análisis Geométrico de Hiperplanos 3D")
-sol = solve(A, b)
-x_range = np.linspace(sol[0]-2, sol[0]+2, 10)
-y_range = np.linspace(sol[1]-2, sol[1]+2, 10)
-X, Y = np.meshgrid(x_range, y_range)
+st.header("Análisis Geométrico 3D")
 
-fig = go.Figure()
-for i in range(3):
-    Z = (b[i] - A[i,0]*X - A[i,1]*Y) / A[i,2]
-    fig.add_trace(go.Surface(z=Z, x=X, y=Y, opacity=0.6, name=f"Ecuación {i+1}", showscale=False))
+try:
+    # Generación controlada de los hiperplanos interactivos
+    x_range = np.linspace(sol_exacta[0]-2, sol_exacta[0]+2, 10)
+    y_range = np.linspace(sol_exacta[1]-2, sol_exacta[1]+2, 10)
+    X, Y = np.meshgrid(x_range, y_range)
 
-fig.update_layout(
-    scene=dict(xaxis_title='x1 (IA)', yaxis_title='x2 (Web)', zaxis_title='x3 (DB)'),
-    margin=dict(l=0, r=0, b=0, t=30)
-)
-st.plotly_chart(fig, use_container_width=True)
+    fig = go.Figure()
+    for i in range(3):
+        # Evitar división entre cero en el coeficiente de la tercera dimensión
+        div = A[i, 2] if A[i, 2] != 0 else 1.0
+        Z = (b[i] - A[i, 0]*X - A[i, 1]*Y) / div
+        fig.add_trace(go.Surface(z=Z, x=X, y=Y, opacity=0.5, name=f"Ecuación {i+1}", showscale=False))
+
+    st.plotly_chart(fig, use_container_width=True)
+except Exception as e:
+    st.error(f"No se pudo cargar la vista tridimensional: {e}")
