@@ -1,4 +1,3 @@
-Para hacer correr el programa es necesario tener estas librerias instaladas:
 streamlit
 numpy
 pandas
