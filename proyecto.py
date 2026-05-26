@@ -58,7 +58,7 @@ elif metodo_view in ["Jacobi", "Gauss-Seidel", "SOR (Sobrerelajación)"]:
     st.write(f"### Primeras 5 iteraciones del método de {metodo_view}")
     x = np.zeros(len(b))
     historial = []
-    omega = 1.2 # Factor de relajación óptimo para este sistema
+    omega = 1.15 # Factor de relajación óptimo para convergencia en sistemas de data center
     
     for k in range(5):
         x_prev = x.copy()
@@ -69,8 +69,8 @@ elif metodo_view in ["Jacobi", "Gauss-Seidel", "SOR (Sobrerelajación)"]:
             elif metodo_view == "Gauss-Seidel":
                 suma = sum(A[i][j] * x[j] for j in range(i)) + sum(A[i][j] * x_prev[j] for j in range(i + 1, len(b)))
                 x[i] = (b[i] - suma) / A[i][i]
-            else: # SOR
-                suma = sum(A[i][j] * x[j] for i_j in range(i)) + sum(A[i][j] * x_prev[j] for j in range(i + 1, len(b)))
+            else: # SOR (Sobrerelajación Sucesiva)
+                suma = sum(A[i][j] * x[j] for j in range(i)) + sum(A[i][j] * x_prev[j] for j in range(i + 1, len(b)))
                 x_gs = (b[i] - suma) / A[i][i]
                 x[i] = (1 - omega) * x_prev[i] + omega * x_gs
         historial.append(x.copy())
@@ -104,14 +104,12 @@ st.divider()
 st.header("Análisis Geométrico 3D")
 
 try:
-    # Generación controlada de los hiperplanos interactivos
     x_range = np.linspace(sol_exacta[0]-2, sol_exacta[0]+2, 10)
     y_range = np.linspace(sol_exacta[1]-2, sol_exacta[1]+2, 10)
     X, Y = np.meshgrid(x_range, y_range)
 
     fig = go.Figure()
     for i in range(3):
-        # Evitar división entre cero en el coeficiente de la tercera dimensión
         div = A[i, 2] if A[i, 2] != 0 else 1.0
         Z = (b[i] - A[i, 0]*X - A[i, 1]*Y) / div
         fig.add_trace(go.Surface(z=Z, x=X, y=Y, opacity=0.5, name=f"Ecuación {i+1}", showscale=False))
